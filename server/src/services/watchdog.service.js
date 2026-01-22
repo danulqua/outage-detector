@@ -49,7 +49,7 @@ export async function recordHeartbeat() {
     stateChangedAt = now;
 
     await sendTelegram(
-      `✅ Electricity is back online\n` +
+      `✅ Power/Internet is back online\n` +
       `Outage duration: ${formattedDuration}`
     );
   }
@@ -83,7 +83,7 @@ export function startWatchdog() {
       stateChangedAt = now;
 
       await sendTelegram(
-        `⚠️ Electricity (or Internet) outage detected\n` +
+        `⚠️ Power/Internet outage detected\n` +
         `Was online for: ${formattedUptime}`
       );
     }
