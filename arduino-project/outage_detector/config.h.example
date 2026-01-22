@@ -1,0 +1,10 @@
+// Create config.h file
+#ifndef CONFIG_H
+#define CONFIG_H
+
+const char* WIFI_SSID = "WiFi_Name";
+const char* WIFI_PASS = "WiFI_Password";
+const char* DEVICE_SECRET = "some-device-secret-string";
+const char* SERVER_HOST = "http://192.168.50.81:3000"; 
+
+#endif
