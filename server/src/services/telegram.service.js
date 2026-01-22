@@ -15,6 +15,7 @@ export async function sendTelegram(text) {
         chat_id: config.CHAT_ID,
         text,
         disable_web_page_preview: true,
+        parse_mode: "MarkdownV2"
       }),
     });
 
