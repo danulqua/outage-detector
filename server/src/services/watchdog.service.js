@@ -1,6 +1,13 @@
 import { OUTAGE_THRESHOLD_MS, CHECK_EVERY_MS } from "../config/constants.js";
 import { STATE } from "../constants.js";
 import { sendTelegram } from "./telegram.service.js";
+import {
+  getOrCreateDevice,
+  updateDeviceState,
+  incrementOutageDuration,
+  incrementOnlineDuration,
+  updateLastSeen,
+} from "./device.service.js";
 
 let lastSeenMs = 0;
 let state = STATE.outage;
@@ -33,6 +40,25 @@ function formatDuration(ms) {
 }
 
 /**
+ * Restore state from database on server startup
+ */
+export async function restoreState() {
+  try {
+    const device = await getOrCreateDevice();
+
+    state = device.state;
+    stateChangedAt = device.stateChangedAt.getTime();
+    lastSeenMs = device.lastSeenMs || 0;
+
+    console.log(`State restored: ${state} since ${new Date(stateChangedAt)}`);
+    console.log(`Last seen: ${lastSeenMs ? new Date(lastSeenMs) : 'never'}`);
+  } catch (error) {
+    console.error("Failed to restore state from database:", error);
+    throw error;
+  }
+}
+
+/**
  * Record a heartbeat from the device
  * Transitions state from OUTAGE to ON and sends notification
  */
@@ -40,10 +66,25 @@ export async function recordHeartbeat() {
   const now = Date.now();
   lastSeenMs = now;
 
+  try {
+    await updateLastSeen(now);
+  } catch (error) {
+    console.error("Failed to persist lastSeenMs to database:", error);
+    // Continue execution
+  }
+
   // Transition OUTAGE -> ON on first heartbeat after outage
   if (state === STATE.outage) {
     const outageDuration = now - stateChangedAt;
     const formattedDuration = formatDuration(outageDuration);
+
+    try {
+      await incrementOutageDuration(outageDuration, new Date(stateChangedAt));
+      await updateDeviceState(STATE.on, new Date(now));
+    } catch (error) {
+      console.error("Failed to persist state to database:", error);
+      // Continue execution - notifications should still work
+    }
 
     state = STATE.on;
     stateChangedAt = now;
@@ -78,6 +119,14 @@ export function startWatchdog() {
     if (state === STATE.on && lastSeenMs && (now - lastSeenMs) > OUTAGE_THRESHOLD_MS) {
       const uptimeDuration = now - stateChangedAt;
       const formattedUptime = formatDuration(uptimeDuration);
+
+      try {
+        await incrementOnlineDuration(uptimeDuration, new Date(stateChangedAt));
+        await updateDeviceState(STATE.outage, new Date(now));
+      } catch (error) {
+        console.error("Failed to persist state to database:", error);
+        // Continue execution - notifications should still work
+      }
 
       state = STATE.outage;
       stateChangedAt = now;
