@@ -1,6 +1,6 @@
 import express from "express";
 
-import { startWatchdog, restoreState } from "./services/watchdog.service.js";
+import { startWatchdog } from "./services/watchdog.service.js";
 import { connectDatabase } from "./config/database.js";
 import router from "./routes/index.js";
 
@@ -11,7 +11,6 @@ app.use(router);
 (async () => {
   try {
     await connectDatabase();
-    await restoreState();
     startWatchdog();
   } catch (error) {
     console.error("Failed to initialize application:", error);

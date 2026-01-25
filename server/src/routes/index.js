@@ -10,8 +10,8 @@ router.get("/hb", authenticateDevice, async (req, res) => {
   res.send("ok");
 });
 
-router.get("/status", (req, res) => {
-  res.json(getState());
+router.get("/status", async (req, res) => {
+  res.json(await getState());
 });
 
 export default router;

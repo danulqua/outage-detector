@@ -9,53 +9,29 @@ import {
   updateLastSeen,
 } from "./device.service.js";
 
-let lastSeenMs = 0;
-let state = STATE.outage;
-let stateChangedAt = Date.now(); // Track when state last changed
-
 /**
  * Format duration in milliseconds to human-readable string
  * @param {number} ms - Duration in milliseconds
  * @returns {string} Formatted duration (e.g., "2h 15m", "45s")
  */
 function formatDuration(ms) {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
+  const totalSeconds = Math.floor(ms / 1000);
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const totalHours = Math.floor(totalMinutes / 60);
+  const days = Math.floor(totalHours / 24);
 
-  if (days > 0) {
-    const remainingHours = hours % 24;
-    return remainingHours > 0 ? `${days}д ${remainingHours}г` : `${days}д`;
-  }
-  if (hours > 0) {
-    const remainingMinutes = minutes % 60;
-    return remainingMinutes > 0 ? `${hours}г ${remainingMinutes}хв` : `${hours}г`;
-  }
-  if (minutes > 0) {
-    const remainingSeconds = seconds % 60;
-    return remainingSeconds > 0 ? `${minutes}хв ${remainingSeconds}с` : `${minutes}хв`;
-  }
-  return `${seconds}с`;
-}
+  const hours = totalHours % 24;
+  const minutes = totalMinutes % 60;
+  const seconds = totalSeconds % 60;
 
-/**
- * Restore state from database on server startup
- */
-export async function restoreState() {
-  try {
-    const device = await getOrCreateDevice();
+  const parts = [];
 
-    state = device.state;
-    stateChangedAt = device.stateChangedAt.getTime();
-    lastSeenMs = device.lastSeenMs || 0;
+  if (days > 0) parts.push(`${days}д`);
+  if (hours > 0) parts.push(`${hours}г`);
+  if (minutes > 0) parts.push(`${minutes}хв`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}с`);
 
-    console.log(`State restored: ${state} since ${new Date(stateChangedAt)}`);
-    console.log(`Last seen: ${lastSeenMs ? new Date(lastSeenMs) : 'never'}`);
-  } catch (error) {
-    console.error("Failed to restore state from database:", error);
-    throw error;
-  }
+  return parts.join(' ');
 }
 
 /**
@@ -63,34 +39,34 @@ export async function restoreState() {
  * Transitions state from OUTAGE to ON and sends notification
  */
 export async function recordHeartbeat() {
-  const now = Date.now();
-  lastSeenMs = now;
+  const currentDate = new Date();
+  const now = currentDate.getTime();
 
   try {
-    await updateLastSeen(now);
+    await updateLastSeen(currentDate);
   } catch (error) {
-    console.error("Failed to persist lastSeenMs to database:", error);
+    console.error("Failed to persist lastSeenAt to database:", error);
     // Continue execution
   }
+  
+  const device = await getOrCreateDevice();
 
   // Transition OUTAGE -> ON on first heartbeat after outage
-  if (state === STATE.outage) {
-    const outageDuration = now - stateChangedAt;
+  if (device.state === STATE.outage) {
+
+    const outageDuration = now - device.stateChangedAt.getTime();
     const formattedDuration = formatDuration(outageDuration);
 
     try {
-      await incrementOutageDuration(outageDuration, new Date(stateChangedAt));
-      await updateDeviceState(STATE.on, new Date(now));
+      await incrementOutageDuration(outageDuration, device.stateChangedAt);
+      await updateDeviceState(STATE.on, currentDate);
     } catch (error) {
       console.error("Failed to persist state to database:", error);
       // Continue execution - notifications should still work
     }
 
-    state = STATE.on;
-    stateChangedAt = now;
-
     await sendTelegram(
-      `*🟢 Світло/Інтернет є 🥳*\n` +
+      `*🟢 Світло є 🥳*\n` +
       `⏱️ Без світла: \`${formattedDuration}\``
     );
   }
@@ -98,13 +74,15 @@ export async function recordHeartbeat() {
 
 /**
  * Get the current state
- * @returns {{state: string, lastSeenMs: number, secondsAgo: number|null}}
+ * @returns {{state: string, lastSeenAt: Date|null, secondsAgo: number|null}}
  */
-export function getState() {
+export async function getState() {
+  const device = await getOrCreateDevice();
+
   return {
-    state,
-    lastSeenMs,
-    secondsAgo: lastSeenMs ? Math.round((Date.now() - lastSeenMs) / 1000) : null,
+    state: device.state,
+    lastSeenAt: device.lastSeenAt,
+    secondsAgo: device.lastSeenAt ? Math.round((Date.now() - device.lastSeenAt.getTime()) / 1000) : null,
   };
 }
 
@@ -114,25 +92,25 @@ export function getState() {
  */
 export function startWatchdog() {
   setInterval(async () => {
-    const now = Date.now();
+    const device = await getOrCreateDevice();
 
-    if (state === STATE.on && lastSeenMs && (now - lastSeenMs) > OUTAGE_THRESHOLD_MS) {
-      const uptimeDuration = now - stateChangedAt;
+    const currentDate = new Date();
+    const now = currentDate.getTime();
+
+    if (device.state === STATE.on && device.lastSeenAt && (now - device.lastSeenAt.getTime()) > OUTAGE_THRESHOLD_MS) {
+      const uptimeDuration = now - device.stateChangedAt.getTime();
       const formattedUptime = formatDuration(uptimeDuration);
 
       try {
-        await incrementOnlineDuration(uptimeDuration, new Date(stateChangedAt));
-        await updateDeviceState(STATE.outage, new Date(now));
+        await incrementOnlineDuration(uptimeDuration, device.stateChangedAt);
+        await updateDeviceState(STATE.outage, currentDate);
       } catch (error) {
         console.error("Failed to persist state to database:", error);
         // Continue execution - notifications should still work
       }
 
-      state = STATE.outage;
-      stateChangedAt = now;
-
       await sendTelegram(
-        `*🔴 Світла/Інтернету немає 😭*\n` +
+        `*🔴 Світла немає 😭*\n` +
         `⏱️ Зі світлом: \`${formattedUptime}\``
       );
     }

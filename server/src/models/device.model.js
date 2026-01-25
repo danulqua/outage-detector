@@ -17,9 +17,9 @@ const deviceSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
-    lastSeenMs: {
-      type: Number,
-      default: 0,
+    lastSeenAt: {
+      type: Date,
+      default: null,
     },
     totalOutageDurationMs: {
       type: Number,

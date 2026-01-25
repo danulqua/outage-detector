@@ -16,7 +16,7 @@ export async function getOrCreateDevice() {
         deviceId: DEVICE_ID,
         state: STATE.outage,
         stateChangedAt: new Date(),
-        lastSeenMs: 0,
+        lastSeenAt: null,
         totalOutageDurationMs: 0,
         totalOnlineDurationMs: 0,
         lastOutageStartedAt: new Date(),
@@ -99,11 +99,11 @@ export async function incrementOnlineDuration(durationMs, startedAt) {
 /**
  * Update the last seen timestamp
  */
-export async function updateLastSeen(lastSeenMs) {
+export async function updateLastSeen(lastSeenAt) {
   try {
     await Device.findOneAndUpdate(
       { deviceId: DEVICE_ID },
-      { lastSeenMs },
+      { lastSeenAt },
       { new: true }
     );
   } catch (error) {
