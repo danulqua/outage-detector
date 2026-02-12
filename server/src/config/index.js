@@ -1,4 +1,4 @@
-import '@dotenvx/dotenvx/config';
+import 'dotenv/config';
 
 // Extract and validate environment variables
 const PORT = Number(process.env.PORT || 3000);
